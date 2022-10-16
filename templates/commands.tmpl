@@ -224,6 +224,14 @@ func {{ $api }}Register(subcommand bool) {
 		{{ end }}
 	{{ end }}
 
+	{{ range $resource := .Resources }}
+		{{ $resource }}Subcommand := &cobra.Command{
+			Use:     "{{ $resource }}",
+			Short:   "Deal with {{ $resource }} resource.",
+		}
+		root.AddCommand({{ $resource }}Subcommand)
+	{{ end }}
+
 	{{ range $operation := .Operations }}
 		func () {
 			params := viper.New()
@@ -306,7 +314,7 @@ func {{ $api }}Register(subcommand bool) {
 					{{- end }}
 				},
 			}
-			root.AddCommand(cmd)
+			{{ $operation.Resource }}Subcommand.AddCommand(cmd)
 
 			{{ template "params" . }}
 		}()

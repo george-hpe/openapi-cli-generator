@@ -54,6 +54,7 @@ type Operation struct {
 	Short          string
 	Long           string
 	Method         string
+	Resource       string
 	CanHaveBody    bool
 	ReturnType     string
 	Path           string
@@ -122,9 +123,85 @@ type OpenAPI struct {
 	PublicGoName string
 	Title        string
 	Description  string
+	Resources    []string
 	Servers      []*Server
 	Operations   []*Operation
 	Waiters      []*Waiter
+}
+
+// getResource parses the resource name from the given path.
+func getResource(path string) string {
+	pathItems := strings.Split(path, "/")
+	count := len(pathItems)
+
+	if isCollection(path) {
+		return pathItems[count-1]
+	}
+	return pathItems[count-2]
+}
+
+// isCollection finds whether it is a collection of resources or not.
+func isCollection(path string) bool {
+	if path[len(path)-1] == '}' {
+		return false
+	}
+	return true
+}
+
+var batchOperationNames = map[string]string{
+	"Post":   "create",
+	"Get":    "batchGet",
+	"Put":    "batchUpdate",
+	"Delete": "batchDelete",
+	"Patch":  "batchPatch",
+}
+
+var operationNames = map[string]string{
+	"Get":    "get",
+	"Put":    "update",
+	"Delete": "delete",
+	"Patch":  "patch",
+}
+
+// getOperationName returns the exact operation name based on the type and method of the resource.
+func getOperationName(path, method string) string {
+	isCollection := isCollection(path)
+
+	if isCollection {
+		return batchOperationNames[method]
+	}
+	return operationNames[method]
+}
+
+// addResource add unique resource names into the list and return.
+func addResource(present map[string]bool, resources []string, resource string) []string {
+	if present[resource] {
+		return resources
+	}
+	present[resource] = true
+
+	return append(resources, resource)
+}
+
+// get Parameters returns parameters in the format <param1> <param2> ... <param n>.
+func getParameters(requiredParams []*Param) string {
+	var params strings.Builder
+
+	for _, v := range requiredParams {
+		params.WriteByte('<')
+		params.WriteString(slug(v.Name))
+		params.WriteByte('>')
+	}
+	return params.String()
+}
+
+// getUsage returns main command with required parameters for cobra.
+func getUsage(path, method string, requiredParams []*Param) string {
+	use := getOperationName(path, method)
+	if len(requiredParams) != 0 {
+		use += " " + getParameters(requiredParams)
+	}
+	return use
 }
 
 // ProcessAPI returns the API description to be used with the commands template
@@ -157,10 +234,13 @@ func ProcessAPI(shortName string, api *openapi3.Swagger) *OpenAPI {
 
 	// Convenience map for operation ID -> operation
 	operationMap := make(map[string]*Operation)
+	// resourceNames used to identify unique resource names.
+	resourceNames := make(map[string]bool, 0)
 
 	var keys []string
 	for path := range api.Paths {
 		keys = append(keys, path)
+		result.Resources = addResource(resourceNames, result.Resources, getResource(path))
 	}
 	sort.Strings(keys)
 
@@ -201,8 +281,6 @@ func ProcessAPI(shortName string, api *openapi3.Swagger) *OpenAPI {
 			if short == "" {
 				short = name
 			}
-
-			use := usage(name, requiredParams)
 
 			description := operation.Description
 			if operation.Extensions[ExtDescription] != nil {
@@ -283,12 +361,13 @@ func ProcessAPI(shortName string, api *openapi3.Swagger) *OpenAPI {
 			o := &Operation{
 				HandlerName:    slug(name),
 				GoName:         toGoName(name, true),
-				Use:            use,
+				Use:            getUsage(path, method, requiredParams),
 				Aliases:        aliases,
 				Short:          short,
 				Long:           escapeString(description),
 				Method:         method,
 				CanHaveBody:    method == "Post" || method == "Put" || method == "Patch",
+				Resource:       getResource(path),
 				ReturnType:     returnType,
 				Path:           path,
 				AllParams:      params,
@@ -623,8 +702,7 @@ func generate(cmd *cobra.Command, args []string) {
 
 	// Load the OpenAPI document.
 	loader := openapi3.NewSwaggerLoader()
-	var swagger *openapi3.Swagger
-	swagger, err = loader.LoadSwaggerFromData(data)
+	swagger, err := loader.LoadSwaggerFromData(data)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -642,7 +720,6 @@ func generate(cmd *cobra.Command, args []string) {
 	}
 
 	shortName := strings.TrimSuffix(path.Base(args[0]), ".yaml")
-
 	templateData := ProcessAPI(shortName, swagger)
 
 	var sb strings.Builder
