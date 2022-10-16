@@ -257,7 +257,19 @@ func ProcessAPI(shortName string, api *openapi3.Swagger) *OpenAPI {
 			json.Unmarshal(item.Extensions[ExtHidden].(json.RawMessage), &pathHidden)
 		}
 
-		for method, operation := range item.Operations() {
+		// Sort the map keys to keep the same order.
+		operations := item.Operations()
+		operationKeys := make([]string, 0, len(operations))
+		for operation := range operations {
+			operationKeys = append(operationKeys, operation)
+		}
+		sort.Strings(operationKeys)
+
+		var operation *openapi3.Operation
+
+		for _, method := range operationKeys {
+			operation = operations[method]
+
 			if operation.Extensions[ExtIgnore] != nil {
 				// Ignore this operation.
 				continue
@@ -333,9 +345,19 @@ func ProcessAPI(shortName string, api *openapi3.Swagger) *OpenAPI {
 				json.Unmarshal(operation.Extensions[ExtHidden].(json.RawMessage), &hidden)
 			}
 
+			// Sort the map keys to keep the same order.
+			codes := make([]string, 0, len(operation.Responses))
+			for code := range operation.Responses {
+				codes = append(codes, code)
+			}
+			sort.Strings(codes)
+
+			var ref *openapi3.ResponseRef
+
 			returnType := "interface{}"
 		returnTypeLoop:
-			for code, ref := range operation.Responses {
+			for _, code := range codes {
+				ref = operation.Responses[code]
 				if num, err := strconv.Atoi(code); err != nil || num < 200 || num >= 300 {
 					// Skip invalid responses
 					continue
