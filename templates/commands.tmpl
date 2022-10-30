@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielgtaylor/openapi-cli-generator/cli"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/h2non/gentleman.v2"
@@ -213,7 +213,7 @@ func {{ $api }}Register(subcommand bool) {
 					Args: cobra.MinimumNArgs({{ len .Operation.RequiredParams }}),
 					Run: func(cmd *cobra.Command, args []string) {
 						if err := {{ $apiPublic }}{{ .GoName }}({{ range $x, $param := .Operation.RequiredParams }}args[{{ $x }}], {{ end }}params); err != nil {
-							log.Fatal().Err(err).Msg("Error waiting")
+							logrus.Fatalf("Error waiting: %v", err)
 						}
 					},
 				}
@@ -262,17 +262,17 @@ func {{ $api }}Register(subcommand bool) {
 					{{- if .CanHaveBody }}
 					body, err := cli.GetBody("{{ .MediaType }}", args[{{ len .RequiredParams}}:])
 					if err != nil {
-						log.Fatal().Err(err).Msg("Unable to get body")
+						logrus.Fatalf("Unable to get body: %v", err)
 					}
 					{{- end }}
 
 					{{ if .NeedsResponse }}resp{{ else }}_{{ end }}, decoded, err := {{ $apiPublic }}{{ .GoName }}({{ range $x, $param := .RequiredParams }}args[{{ $x }}], {{ end }}params{{ if .CanHaveBody }}, body{{ end }})
 					if err != nil {
-						log.Fatal().Err(err).Msg("Error calling operation")
+						logrus.Fatalf("Error calling operation: %v", err)
 					}
 
 					if err := cli.Formatter.Format(decoded); err != nil {
-						log.Fatal().Err(err).Msg("Formatting failed")
+						logrus.Fatalf("Formatting failed: %v", err)
 					}
 
 					{{ if .Waiters }}
@@ -292,7 +292,7 @@ func {{ $api }}Register(subcommand bool) {
 							{{- range $x, $selector := .Args }}
 								actual, err = cli.GetMatchValue(resp.Context, "{{ $selector }}", reqParams, decoded)
 								if err != nil {
-									log.Fatal().Err(err).Msg("Could not get matcher value")
+									logrus.Fatalf("Could not get matcher value: %v", err)
 								}
 
 								arg{{ $x }} := fmt.Sprintf("%v", actual)
@@ -301,14 +301,14 @@ func {{ $api }}Register(subcommand bool) {
 							{{- range $id, $selector := .Params }}
 								actual, err = cli.GetMatchValue(resp.Context, "{{ $selector }}", reqParams, decoded)
 								if err != nil {
-									log.Fatal().Err(err).Msg("Could not get matcher value")
+									logrus.Fatalf("Could not get matcher value: %v", err)
 								}
 
 								wparams.Set("{{ $id }}", actual)
 							{{- end }}
 
 							if err := {{ $apiPublic }}{{ .Waiter.GoName }}({{ range $x, $selector := .Args }}arg{{ $x }}, {{ end }}wparams); err != nil {
-								log.Fatal().Err(err).Msg("Waiter error")
+								logrus.Fatalf("Waiter error: %v", err)
 							}
 						}
 					{{- end }}
