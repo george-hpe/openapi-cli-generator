@@ -7,6 +7,7 @@ import (
 	{{ if .Imports.Fmt }}"fmt"{{ end }}
 	{{ if .Imports.Strings }}"strings"{{ end }}
 	{{ if .Imports.Time }}"time"{{ end }}
+	"encoding/json"
 
 	"github.com/danielgtaylor/openapi-cli-generator/cli"
 	"github.com/pkg/errors"
@@ -175,6 +176,7 @@ func {{ $api }}Servers() []map[string]string {
 
 func {{ $api }}Register(subcommand bool) {
 	root := cli.Root
+	indent := "  "
 
 	if subcommand {
 		root = &cobra.Command{
@@ -271,9 +273,12 @@ func {{ $api }}Register(subcommand bool) {
 						logrus.Fatalf("Error calling operation: %v", err)
 					}
 
-					if err := cli.Formatter.Format(decoded); err != nil {
-						logrus.Fatalf("Formatting failed: %v", err)
+					jsonRes, err := json.MarshalIndent(decoded, "", indent)
+					if err != nil {
+						logrus.Errorf("Could not unmarshal response: %v", err)
 					}
+
+					logrus.Infof("%s", jsonRes)
 
 					{{ if .Waiters }}
 						reqParams := params.AllSettings()
